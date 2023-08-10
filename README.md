@@ -1,0 +1,2 @@
+# mock
+c++ mock function
