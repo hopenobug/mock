@@ -13,7 +13,7 @@ if [ -z "$platform" ]; then
 	case "${unameOut}" in
 	Linux) platform=linux ;;
 	Darwin) platform=macos ;;
-	CYGWIN* | MINGW32* | MSYS*) platform=windows ;;
+	CYGWIN* | MINGW* | MSYS*) platform=windows ;;
 	*)  echo "unknown platform: ${unameOut}"; exit 1 ;;
 	esac
 
