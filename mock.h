@@ -13,25 +13,48 @@
 #define COMBINE(X, Y) _COMBINE_(X,Y)
 #define MOCK(target, alter) auto && COMBINE(mock, __LINE__) = mock::Mock(target, alter)
 #define MOCK_RETURN(target, alter) auto && COMBINE(mock, __LINE__) = mock::MockReturn(target, alter)
- 
+#define MOCK_VIRTUAL(target, obj, alter) auto && COMBINE(mock, __LINE__) = mock::MockVirtual(target, obj, alter)
  
 namespace {
-/**
- * 将任意对象转换成void *
- * 用于函数指针的转换
- * @tparam T
- * @param t
- * @return 转换成void * 的函数指针
- */
-template<typename T>
-void * toVoidPtr(T src) {
+template<typename Dst, typename Src>
+Dst toAnyType(Src src) {
     union {
-        void * ptr;
-        T src;
+        Dst dst;
+        Src src;
     } Func{};
     Func.src = src;
-    return Func.ptr;
+    return Func.dst;
 }
+
+template<typename Dst>
+Dst toAnyType(Dst src) {
+    return src;
+}
+
+template<typename T>
+uint64_t toUint64(T src) {
+    return toAnyType<uint64_t>(src);
+}
+
+template<typename T>
+void * toVoidPtr(T src) {
+    return toAnyType<void *>(src);
+}
+
+class Checker {
+public:
+    virtual void Check() = 0;
+};
+
+uint64_t funcOffset = toUint64(&Checker::Check);
+
+template<typename T, typename P>
+void * getVirtualFunction(T src, P obj) {
+    uint64_t index = (toUint64(src) - funcOffset) / sizeof(void *);
+    void **vt = *(void ***)obj;
+    return vt[index];
+}
+
 }
  
  
@@ -71,7 +94,7 @@ public:
     }
  
 	void Reset() {
-		if (mInterceptor == nullptr || !mocked) {
+		if (mInterceptor == nullptr || !mMocked) {
             return;
         }
         gum_interceptor_begin_transaction(mInterceptor);
@@ -80,24 +103,24 @@ public:
  
  
         g_object_unref(mInterceptor);
-		mocked = false;
+		mMocked = false;
 	}
 
 	void Mock() {
-		if (!mocked) {
+		if (!mMocked) {
             gpointer original = nullptr;
 			gum_init_embedded();
 			mInterceptor = gum_interceptor_obtain();
 			gum_interceptor_begin_transaction(mInterceptor);
 			gum_interceptor_replace(mInterceptor, mTarget, toVoidPtr(_invoke), toVoidPtr(this), &original);
 			gum_interceptor_end_transaction(mInterceptor);
-			mocked = true;
+			mMocked = true;
             mOriginalTarget = original;
 		}
 	}
 
     bool GetMocked() {
-        return mocked;
+        return mMocked;
     }
  
     /**
@@ -132,7 +155,7 @@ private:
     //用于替换的函数
     std::function<RET(ARGS...)> mAlterFun;
 
-	bool mocked{false};
+	bool mMocked{false};
 };
  
  
@@ -147,23 +170,31 @@ private:
  * @return MockHandler
  */
 template<typename RET, class CLS, typename ...ARG, typename T>
-auto Mock(RET(CLS::* target)(ARG...), T alter) {
+std::shared_ptr<MockHandler<RET, CLS *, ARG...>> Mock(RET(CLS::* target)(ARG...), T alter) {
     return std::make_shared<MockHandler<RET, CLS *, ARG...>>(toVoidPtr(target), alter);;
 }
  
  
 template<typename RET, class CLS, typename ...ARG, typename T>
-auto Mock(RET(CLS::* target)(ARG...) const, T alter) {
+std::shared_ptr<MockHandler<RET, CLS *, ARG...>> Mock(RET(CLS::* target)(ARG...) const, T alter) {
     return std::make_shared<MockHandler<RET, CLS *, ARG...>>(toVoidPtr(target), alter);
 }
- 
- 
+
 template<typename RET, typename ...ARG, typename T>
-auto Mock(RET(* target)(ARG...), T alter) {
-    return std::make_shared<MockHandler<RET, ARG...>>(toVoidPtr(target), alter);;
+std::shared_ptr<MockHandler<RET, ARG...>> Mock(RET(* target)(ARG...), T alter) {
+    return std::make_shared<MockHandler<RET, ARG...>>(toVoidPtr(target), alter);
 }
- 
- 
+
+template<typename RET, class CLS, typename ...ARG, typename T>
+std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockVirtual(RET(CLS::* target)(), const CLS *obj,T alter) {
+    return std::make_shared<MockHandler<RET, CLS *, ARG...>>(getVirtualFunction(target, obj), alter);
+} 
+
+template<typename RET, class CLS, typename ...ARG, typename T>
+std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockVirtual(RET(CLS::* target)() const, const CLS *obj,T alter) {
+    return std::make_shared<MockHandler<RET, CLS *, ARG...>>(getVirtualFunction(target, obj), alter);
+}
+
 /**
  * mock返回值，mock的简便用法
  * @tparam RET
@@ -174,24 +205,24 @@ auto Mock(RET(* target)(ARG...), T alter) {
  * @return MockHandler
  */
 template<typename RET, class CLS, typename ...ARG>
-auto MockReturn(RET(CLS::* target)(ARG...), RET ret) {
-    return std::make_shared<MockHandler<RET, CLS *, ARG...>>(toVoidPtr(target), [=](auto && ...) {
+std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockReturn(RET(CLS::* target)(ARG...), RET ret) {
+    return std::make_shared<MockHandler<RET, CLS *, ARG...>>(toVoidPtr(target), [=](CLS *obj, ARG... arg) {
         return ret;
     });
 }
  
  
 template<typename RET, class CLS, typename ...ARG>
-auto MockReturn(RET(CLS::* target)(ARG...) const, RET ret) {
-    return std::make_shared<MockHandler<RET, CLS *, ARG...>>(toVoidPtr(target), [=](auto && ...) {
+std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockReturn(RET(CLS::* target)(ARG...) const, RET ret) {
+    return std::make_shared<MockHandler<RET, CLS *, ARG...>>(toVoidPtr(target), [=](CLS *obj, ARG&&... arg) {
         return ret;
     });
 }
  
  
 template<typename RET, typename ...ARG>
-auto MockReturn(RET(target)(ARG...), RET ret) {
-    return std::make_unique<MockHandler<RET, ARG...>>(toVoidPtr(target), [=](auto && ...) {
+std::shared_ptr<MockHandler<RET, ARG...>> MockReturn(RET(target)(ARG...), RET ret) {
+    return std::make_shared<MockHandler<RET, ARG...>>(toVoidPtr(target), [=](ARG&&... arg) {
         return ret;
     });
 }
@@ -213,3 +244,5 @@ void CallOriginalVoid(ARG... args) {
 }
 
 }
+
+
