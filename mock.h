@@ -8,14 +8,17 @@
 #include "frida/frida-gum.h"
 
 // frida-gum 下载地址 https://github.com/frida/frida/releases/tag/16.1.3
- 
+// MOCK_VIRTUAL 在 linux和mac上测试正常， 在windows上无法工作， 原因在于windows上无法通过函数指针获取正确的虚函数表偏移， 需要自己手动指定偏移
+
 #define _COMBINE_(X, Y) X##Y  // helper macro
 #define COMBINE(X, Y) _COMBINE_(X,Y)
 #define MOCK(target, alter) auto && COMBINE(mock, __LINE__) = mock::Mock(target, alter)
 #define MOCK_RETURN(target, alter) auto && COMBINE(mock, __LINE__) = mock::MockReturn(target, alter)
 #define MOCK_VIRTUAL(target, obj, alter) auto && COMBINE(mock, __LINE__) = mock::MockVirtual(target, obj, alter)
- 
-namespace {
+
+
+namespace mock {
+
 template<typename Dst, typename Src>
 Dst toAnyType(Src src) {
     union {
@@ -53,13 +56,7 @@ void * getVirtualFunction(T src, P obj) {
     uint64_t index = (toUint64(src) - funcOffset) / sizeof(void *);
     void **vt = *(void ***)obj;
     return vt[index];
-}
-
-}
- 
- 
-namespace mock {
- 
+} 
  
 /**
  * 一个对象管理一个mock，析构时自动回滚
@@ -186,12 +183,12 @@ std::shared_ptr<MockHandler<RET, ARG...>> Mock(RET(* target)(ARG...), T alter) {
 }
 
 template<typename RET, class CLS, typename ...ARG, typename T>
-std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockVirtual(RET(CLS::* target)(), const CLS *obj,T alter) {
+std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockVirtual(RET(CLS::* target)(ARG...), const CLS *obj,T alter) {
     return std::make_shared<MockHandler<RET, CLS *, ARG...>>(getVirtualFunction(target, obj), alter);
 } 
 
 template<typename RET, class CLS, typename ...ARG, typename T>
-std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockVirtual(RET(CLS::* target)() const, const CLS *obj,T alter) {
+std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockVirtual(RET(CLS::* target)(ARG...) const, const CLS *obj,T alter) {
     return std::make_shared<MockHandler<RET, CLS *, ARG...>>(getVirtualFunction(target, obj), alter);
 }
 
