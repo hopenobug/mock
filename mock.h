@@ -50,14 +50,19 @@ public:
 };
 
 uint64_t funcOffset = toUint64(&Checker::Check);
-
-template<typename T, typename P>
-void * getVirtualFunction(T src, P obj) {
-    uint64_t index = (toUint64(src) - funcOffset) / sizeof(void *);
+template<typename T>
+T getVirtualFunctionByIndex(const void *obj, uint64_t index) {
     void **vt = *(void ***)obj;
-    return vt[index];
-} 
- 
+    return reinterpret_cast<T>(vt[index]);
+}
+
+// 在windows上无法正常获取虚函数
+template<typename T>
+void *getVirtualFunction(T func, const void *obj) {
+    uint64_t index = (toUint64(func) - funcOffset) / sizeof(void *);
+    return getVirtualFunctionByIndex<void *>(obj, index);
+}
+
 /**
  * 一个对象管理一个mock，析构时自动回滚
  * @tparam RET
@@ -183,12 +188,12 @@ std::shared_ptr<MockHandler<RET, ARG...>> Mock(RET(* target)(ARG...), T alter) {
 }
 
 template<typename RET, class CLS, typename ...ARG, typename T>
-std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockVirtual(RET(CLS::* target)(ARG...), const CLS *obj,T alter) {
+std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockVirtual(RET(CLS::* target)(ARG...), const CLS *obj, T alter) {
     return std::make_shared<MockHandler<RET, CLS *, ARG...>>(getVirtualFunction(target, obj), alter);
 } 
 
 template<typename RET, class CLS, typename ...ARG, typename T>
-std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockVirtual(RET(CLS::* target)(ARG...) const, const CLS *obj,T alter) {
+std::shared_ptr<MockHandler<RET, CLS *, ARG...>> MockVirtual(RET(CLS::* target)(ARG...) const, const CLS *obj, T alter) {
     return std::make_shared<MockHandler<RET, CLS *, ARG...>>(getVirtualFunction(target, obj), alter);
 }
 
@@ -241,5 +246,3 @@ void CallOriginalVoid(ARG... args) {
 }
 
 }
-
-
