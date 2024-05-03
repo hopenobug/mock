@@ -49,7 +49,6 @@ public:
     virtual void Check() = 0;
 };
 
-uint64_t funcOffset = toUint64(&Checker::Check);
 template<typename T>
 T getVirtualFunctionByIndex(const void *obj, uint64_t index) {
     void **vt = *(void ***)obj;
@@ -59,6 +58,7 @@ T getVirtualFunctionByIndex(const void *obj, uint64_t index) {
 // 在windows上无法正常获取虚函数
 template<typename T>
 void *getVirtualFunction(T func, const void *obj) {
+    static const uint64_t funcOffset = toUint64(&Checker::Check);
     uint64_t index = (toUint64(func) - funcOffset) / sizeof(void *);
     return getVirtualFunctionByIndex<void *>(obj, index);
 }
