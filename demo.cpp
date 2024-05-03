@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
 #endif
 
     // mock virtual function TestClass::V2
-    MOCK((mock::getVirtualFunctionByIndex<int (*)(TestClass *, int)>(&a, 2)), ([](TestClass *c, int i) -> int {
+    MOCK((mock::getVirtualFunctionByIndex<int (*)(TestClass *, int)>(&a, 3)), ([](TestClass *c, int i) -> int {
              if (i == 0) {
                  return 0;
              };
